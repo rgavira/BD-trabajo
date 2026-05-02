@@ -1,0 +1,129 @@
+{
+  "paragraphs": [
+    {
+      "title": "1. Carga y utilidades",
+      "text": "%pyspark\nimport json\nimport matplotlib\nmatplotlib.use('Agg')\nimport matplotlib.pyplot as plt\nimport numpy as np\nfrom sklearn.metrics import confusion_matrix, classification_report\n\nHDFS = \"hdfs://namenode:9000\"\n\n\ndef listar_ficheros(path_dir):\n    jvm = sc._jvm\n    conf = sc._jsc.hadoopConfiguration()\n    fs = jvm.org.apache.hadoop.fs.FileSystem.get(conf)\n    path = jvm.org.apache.hadoop.fs.Path(path_dir)\n    if not fs.exists(path):\n        return []\n    rutas = []\n    for estado in fs.listStatus(path):\n        nombre = estado.getPath().getName()\n        if estado.isFile() and nombre.startswith('part-'):\n            rutas.append(estado.getPath().toString())\n    return sorted(rutas)\n\n\ndef leer_json_desde_directorio(path_dir):\n    try:\n        rutas = listar_ficheros(path_dir)\n        if not rutas:\n            print(f\"No hay ficheros JSON en {path_dir}\")\n            return None\n        texto = \"\\n\".join(\n            row['value']\n            for row in spark.read.text(rutas).collect()\n            if row['value'] and row['value'].strip()\n        ).strip()\n        if not texto:\n            print(f\"No hay contenido JSON legible en {path_dir}\")\n            return None\n        return json.loads(texto)\n    except Exception as exc:\n        print(f\"No se pudieron leer metricas desde {path_dir}: {exc}\")\n        return None\n\n\ndef cm_desde_preds(preds_df):\n    pdf = preds_df.select('label', 'prediction').toPandas()\n    cm = confusion_matrix(pdf['label'], pdf['prediction'])\n    reporte = classification_report(pdf['label'], pdf['prediction'], target_names=['Clean', 'Explicit'])\n    return cm, reporte\n\n\ndef pintar_cm(cm, titulo):\n    fig, ax = plt.subplots(figsize=(5, 4))\n    ax.imshow(cm, interpolation='nearest', cmap='Blues')\n    ax.set_title(titulo)\n    ax.set_xticks(np.arange(2))\n    ax.set_xticklabels(['Clean', 'Explicit'])\n    ax.set_yticks(np.arange(2))\n    ax.set_yticklabels(['Clean', 'Explicit'])\n    ax.set_xlabel('Predicho')\n    ax.set_ylabel('Real')\n    for i in range(cm.shape[0]):\n        for j in range(cm.shape[1]):\n            ax.text(j, i, str(cm[i, j]), ha='center', va='center', color='white' if cm[i, j] > cm.max() / 2 else 'black', fontweight='bold')\n    plt.tight_layout()\n    plt.show()\n\n\nmetricas_w2v = leer_json_desde_directorio(f\"{HDFS}/metrics/word2vec_mlp/\")\nmetricas_use_mllib = leer_json_desde_directorio(f\"{HDFS}/metrics/spark_nlp_use_mllib_mlp/\")\nmetricas_sparknlp = leer_json_desde_directorio(f\"{HDFS}/metrics/spark_nlp_classifierdl/\")\nmetricas_tf = leer_json_desde_directorio(f\"{HDFS}/metrics/tensorflow_text_baselines/\")\n\nresultados_tf = metricas_tf.get('results', []) if metricas_tf else []\nmejor_tf = max(resultados_tf, key=lambda x: x.get('f1_weighted', 0.0)) if resultados_tf else None\n\ntry:\n    import sparknlp\n    from sparknlp.base import DocumentAssembler\n    from sparknlp.annotator import UniversalSentenceEncoder\n    from pyspark.ml import Pipeline, PipelineModel\n    from pyspark.ml.classification import MultilayerPerceptronClassificationModel\n    from pyspark.ml.functions import array_to_vector\n    from pyspark.sql import functions as F\n    HAS_SPARKNLP = True\nexcept Exception as exc:\n    HAS_SPARKNLP = False\n    SPARKNLP_IMPORT_ERROR = str(exc)\n\nprint('Word2Vec + MLP:', metricas_w2v is not None)\nprint('USE + MLlib MLP:', metricas_use_mllib is not None)\nprint('Spark NLP ClassifierDL:', metricas_sparknlp is not None)\nprint('TensorFlow:', metricas_tf is not None)\nprint('Spark NLP en Zeppelin:', HAS_SPARKNLP)",
+      "user": "anonymous",
+      "dateUpdated": "2026-05-02 10:05:00.000",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_utils",
+      "id": "p1",
+      "dateCreated": "2026-05-02 10:05:00.000",
+      "status": "READY"
+    },
+    {
+      "title": "2. Modelo 03 - Word2Vec + MLP",
+      "text": "%pyspark\nprint(json.dumps(metricas_w2v, indent=2) if metricas_w2v else 'Metricas no disponibles')\n\nif metricas_w2v:\n    test_base = spark.read.parquet(f\"{HDFS}/data/processed/test/\").select('text', 'label')\n    from pyspark.ml import PipelineModel\n    modelo_w2v = PipelineModel.load(f\"{HDFS}/models/word2vec_mlp/\")\n    preds_w2v = modelo_w2v.transform(test_base).select('label', 'prediction')\n    cm, reporte = cm_desde_preds(preds_w2v)\n    pintar_cm(cm, 'Nivel 1 - Word2Vec + MLP')\n    print(reporte)",
+      "user": "anonymous",
+      "dateUpdated": "2026-05-02 10:05:00.000",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_03",
+      "id": "p2",
+      "dateCreated": "2026-05-02 10:05:00.000",
+      "status": "READY"
+    },
+    {
+      "title": "3. Modelo 07 - USE + MLlib MLP",
+      "text": "%pyspark\nprint(json.dumps(metricas_use_mllib, indent=2) if metricas_use_mllib else 'Metricas no disponibles')\n\nif metricas_use_mllib and HAS_SPARKNLP:\n    test_base = spark.read.parquet(f\"{HDFS}/data/processed/test/\").select('text', 'label')\n    document = DocumentAssembler().setInputCol('text').setOutputCol('document')\n    use = UniversalSentenceEncoder.pretrained('tfhub_use', 'en').setInputCols(['document']).setOutputCol('sentence_embeddings')\n    emb_model = Pipeline(stages=[document, use]).fit(test_base.limit(1))\n    test_feat = (emb_model.transform(test_base)\n                 .withColumn('features', array_to_vector(F.col('sentence_embeddings').getItem(0)['embeddings']))\n                 .select('features', 'label'))\n    mlp_model = MultilayerPerceptronClassificationModel.load(f\"{HDFS}/models/spark_nlp_use_mllib_mlp/\")\n    preds_use_mllib = mlp_model.transform(test_feat).select('label', 'prediction')\n    cm, reporte = cm_desde_preds(preds_use_mllib)\n    pintar_cm(cm, 'Nivel 2 - USE + MLlib MLP')\n    print(reporte)\nelif metricas_use_mllib:\n    print('Metricas cargadas, pero Zeppelin no tiene Spark NLP para reconstruir la matriz de confusion')",
+      "user": "anonymous",
+      "dateUpdated": "2026-05-02 10:05:00.000",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_07",
+      "id": "p3",
+      "dateCreated": "2026-05-02 10:05:00.000",
+      "status": "READY"
+    },
+    {
+      "title": "4. Modelo 05 - Spark NLP ClassifierDL",
+      "text": "%pyspark\nprint(json.dumps(metricas_sparknlp, indent=2) if metricas_sparknlp else 'Metricas no disponibles')\nprint('\\nNota: este modelo se mantiene como experimento Spark NLP. Si no hay metricas, el entrenamiento no llego a completarse en este entorno.')",
+      "user": "anonymous",
+      "dateUpdated": "2026-05-02 10:05:00.000",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_05",
+      "id": "p4",
+      "dateCreated": "2026-05-02 10:05:00.000",
+      "status": "READY"
+    },
+    {
+      "title": "5. TensorFlow - Mejor baseline",
+      "text": "%pyspark\nif mejor_tf:\n    print(json.dumps(mejor_tf, indent=2))\n    if mejor_tf.get('confusion_matrix'):\n        pintar_cm(np.array(mejor_tf.get('confusion_matrix')), f\"TensorFlow - {mejor_tf.get('model')}\")\nelse:\n    print('No hay resultados TensorFlow disponibles')",
+      "user": "anonymous",
+      "dateUpdated": "2026-05-02 10:05:00.000",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_tf",
+      "id": "p5",
+      "dateCreated": "2026-05-02 10:05:00.000",
+      "status": "READY"
+    },
+    {
+      "title": "6. Comparativa final",
+      "text": "%pyspark\nmodelos = []\naccuracy = []\nf1_weighted = []\nf1_macro = []\nauc = []\n\nfor nombre, fuente in [('Nivel 1', metricas_w2v), ('Nivel 2', metricas_use_mllib), ('Nivel 3', metricas_sparknlp), ('Nivel 4', mejor_tf)]:\n    if fuente:\n        modelos.append(nombre)\n        accuracy.append(fuente.get('accuracy') or 0.0)\n        f1_weighted.append(fuente.get('f1_weighted') or 0.0)\n        f1_macro.append(fuente.get('f1_macro') or 0.0)\n        auc.append(fuente.get('auc_roc') or 0.0)\n\nif not modelos:\n    print('No hay metricas disponibles para comparar')\nelse:\n    fig, axes = plt.subplots(1, 4, figsize=(22, 5))\n    series = [('accuracy', accuracy), ('f1_weighted', f1_weighted), ('f1_macro', f1_macro), ('auc_roc', auc)]\n    for ax, (titulo, valores) in zip(axes, series):\n        bars = ax.bar(modelos, valores, color=['#1f77b4', '#2ca02c', '#e4572e', '#9467bd'][:len(modelos)])\n        ax.set_title(titulo)\n        ax.set_ylim(0, 1.05)\n        ax.grid(axis='y', alpha=0.25)\n        for bar, valor in zip(bars, valores):\n            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.015, f'{valor:.3f}', ha='center', va='bottom', fontsize=9)\n    plt.tight_layout()\n    plt.show()",
+      "user": "anonymous",
+      "dateUpdated": "2026-05-02 10:05:00.000",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_compare",
+      "id": "p6",
+      "dateCreated": "2026-05-02 10:05:00.000",
+      "status": "READY"
+    }
+  ],
+  "name": "Visualizaciones - Deteccion Contenido Explicito",
+  "id": "2MT4BKQT4",
+  "defaultInterpreterGroup": "spark",
+  "version": "0.12.0",
+  "noteParams": {},
+  "noteForms": {},
+  "angularObjects": {},
+  "config": {
+    "isZeppelinNotebookCronEnable": false
+  },
+  "info": {}
+}

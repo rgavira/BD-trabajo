@@ -1,0 +1,227 @@
+{
+  "paragraphs": [
+    {
+      "title": "1. Carga y utilidades",
+      "text": "%pyspark\nimport json\nimport matplotlib\nmatplotlib.use(\u0027Agg\u0027)\nimport matplotlib.pyplot as plt\nimport numpy as np\n#from sklearn.metrics import confusion_matrix, classification_report\n\nHDFS \u003d \"hdfs://namenode:9000\"\n\n\ndef listar_ficheros(path_dir):\n    jvm \u003d sc._jvm\n    conf \u003d sc._jsc.hadoopConfiguration()\n    fs \u003d jvm.org.apache.hadoop.fs.FileSystem.get(conf)\n    path \u003d jvm.org.apache.hadoop.fs.Path(path_dir)\n    if not fs.exists(path):\n        return []\n    rutas \u003d []\n    for estado in fs.listStatus(path):\n        nombre \u003d estado.getPath().getName()\n        if estado.isFile() and nombre.startswith(\u0027part-\u0027):\n            rutas.append(estado.getPath().toString())\n    return sorted(rutas)\n\n\ndef leer_json_desde_directorio(path_dir):\n    try:\n        rutas \u003d listar_ficheros(path_dir)\n        if not rutas:\n            print(f\"No hay ficheros JSON en {path_dir}\")\n            return None\n        texto \u003d \"\\n\".join(\n            row[\u0027value\u0027]\n            for row in spark.read.text(rutas).collect()\n            if row[\u0027value\u0027] and row[\u0027value\u0027].strip()\n        ).strip()\n        if not texto:\n            print(f\"No hay contenido JSON legible en {path_dir}\")\n            return None\n        return json.loads(texto)\n    except Exception as exc:\n        print(f\"No se pudieron leer metricas desde {path_dir}: {exc}\")\n        return None\n\n\ndef cm_desde_preds(preds_df):\n    pdf \u003d preds_df.select(\u0027label\u0027, \u0027prediction\u0027).toPandas()\n    cm \u003d confusion_matrix(pdf[\u0027label\u0027], pdf[\u0027prediction\u0027])\n    reporte \u003d classification_report(pdf[\u0027label\u0027], pdf[\u0027prediction\u0027], target_names\u003d[\u0027Clean\u0027, \u0027Explicit\u0027])\n    return cm, reporte\n\n\ndef pintar_cm(cm, titulo):\n    fig, ax \u003d plt.subplots(figsize\u003d(5, 4))\n    ax.imshow(cm, interpolation\u003d\u0027nearest\u0027, cmap\u003d\u0027Blues\u0027)\n    ax.set_title(titulo)\n    ax.set_xticks(np.arange(2))\n    ax.set_xticklabels([\u0027Clean\u0027, \u0027Explicit\u0027])\n    ax.set_yticks(np.arange(2))\n    ax.set_yticklabels([\u0027Clean\u0027, \u0027Explicit\u0027])\n    ax.set_xlabel(\u0027Predicho\u0027)\n    ax.set_ylabel(\u0027Real\u0027)\n    for i in range(cm.shape[0]):\n        for j in range(cm.shape[1]):\n            ax.text(j, i, str(cm[i, j]), ha\u003d\u0027center\u0027, va\u003d\u0027center\u0027, color\u003d\u0027white\u0027 if cm[i, j] \u003e cm.max() / 2 else \u0027black\u0027, fontweight\u003d\u0027bold\u0027)\n    plt.tight_layout()\n    plt.show()\n\n\nmetricas_w2v \u003d leer_json_desde_directorio(f\"{HDFS}/metrics/word2vec_mlp/\")\nmetricas_use_mllib \u003d leer_json_desde_directorio(f\"{HDFS}/metrics/spark_nlp_use_mllib_mlp/\")\nmetricas_sparknlp \u003d leer_json_desde_directorio(f\"{HDFS}/metrics/spark_nlp_classifierdl/\")\nmetricas_tf \u003d leer_json_desde_directorio(f\"{HDFS}/metrics/tensorflow_text_baselines/\")\n\nresultados_tf \u003d metricas_tf.get(\u0027results\u0027, []) if metricas_tf else []\nmejor_tf \u003d max(resultados_tf, key\u003dlambda x: x.get(\u0027f1_weighted\u0027, 0.0)) if resultados_tf else None\n\ntry:\n    import sparknlp\n    from sparknlp.base import DocumentAssembler\n    from sparknlp.annotator import UniversalSentenceEncoder\n    from pyspark.ml import Pipeline, PipelineModel\n    from pyspark.ml.classification import MultilayerPerceptronClassificationModel\n    from pyspark.ml.functions import array_to_vector\n    from pyspark.sql import functions as F\n    HAS_SPARKNLP \u003d True\nexcept Exception as exc:\n    HAS_SPARKNLP \u003d False\n    SPARKNLP_IMPORT_ERROR \u003d str(exc)\n\nprint(\u0027Word2Vec + MLP:\u0027, metricas_w2v is not None)\nprint(\u0027USE + MLlib MLP:\u0027, metricas_use_mllib is not None)\nprint(\u0027Spark NLP ClassifierDL:\u0027, metricas_sparknlp is not None)\nprint(\u0027TensorFlow:\u0027, metricas_tf is not None)\nprint(\u0027Spark NLP en Zeppelin:\u0027, HAS_SPARKNLP)",
+      "user": "anonymous",
+      "dateUpdated": "2026-05-02 09:48:35.731",
+      "progress": 0,
+      "config": {
+        "colWidth": 12.0,
+        "fontSize": 9.0,
+        "results": {},
+        "enabled": true,
+        "editorSetting": {
+          "language": "python",
+          "editOnDblClick": false,
+          "completionKey": "TAB",
+          "completionSupport": true
+        }
+      },
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "results": {
+        "code": "SUCCESS",
+        "msg": [
+          {
+            "type": "TEXT",
+            "data": "No hay ficheros JSON en hdfs://namenode:9000/metrics/spark_nlp_classifierdl/\nNo hay ficheros JSON en hdfs://namenode:9000/metrics/tensorflow_text_baselines/\nWord2Vec + MLP: True\nUSE + MLlib MLP: True\nSpark NLP ClassifierDL: False\nTensorFlow: False\nSpark NLP en Zeppelin: False\n"
+          }
+        ]
+      },
+      "apps": [],
+      "runtimeInfos": {
+        "jobUrl": {
+          "propertyName": "jobUrl",
+          "label": "SPARK JOB",
+          "tooltip": "View in Spark web UI",
+          "group": "spark",
+          "values": [
+            {
+              "jobUrl": "http://zeppelin:4040/jobs/job?id\u003d2"
+            },
+            {
+              "jobUrl": "http://zeppelin:4040/jobs/job?id\u003d3"
+            }
+          ],
+          "interpreterSettingId": "spark"
+        }
+      },
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1777715123370_2139654225",
+      "id": "p1",
+      "dateCreated": "2026-05-02 09:45:23.370",
+      "dateStarted": "2026-05-02 09:48:35.746",
+      "dateFinished": "2026-05-02 09:48:40.953",
+      "status": "FINISHED"
+    },
+    {
+      "title": "2. Modelo 03 - Word2Vec + MLP",
+      "text": "%pyspark\nprint(json.dumps(metricas_w2v, indent\u003d2) if metricas_w2v else \u0027Metricas no disponibles\u0027)\n\nif metricas_w2v:\n    test_base \u003d spark.read.parquet(f\"{HDFS}/data/processed/test/\").select(\u0027text\u0027, \u0027label\u0027)\n    from pyspark.ml import PipelineModel\n    modelo_w2v \u003d PipelineModel.load(f\"{HDFS}/models/word2vec_mlp/\")\n    preds_w2v \u003d modelo_w2v.transform(test_base).select(\u0027label\u0027, \u0027prediction\u0027)\n    cm, reporte \u003d cm_desde_preds(preds_w2v)\n    pintar_cm(cm, \u0027Nivel 1 - Word2Vec + MLP\u0027)\n    print(reporte)",
+      "user": "anonymous",
+      "dateUpdated": "2026-05-02 09:48:46.798",
+      "progress": 0,
+      "config": {
+        "colWidth": 12.0,
+        "fontSize": 9.0,
+        "results": {},
+        "enabled": true,
+        "editorSetting": {
+          "language": "python",
+          "editOnDblClick": false,
+          "completionKey": "TAB",
+          "completionSupport": true
+        }
+      },
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "results": {
+        "code": "ERROR",
+        "msg": [
+          {
+            "type": "TEXT",
+            "data": "{\n  \"model\": \"Word2Vec_GlobalAvgPool_MLP_SparkMLlib\",\n  \"auc_roc\": 0.8932,\n  \"f1_weighted\": 0.8465,\n  \"f1_macro\": 0.8061,\n  \"f1_explicit\": 0.7144,\n  \"f1_not_explicit\": 0.8977,\n  \"accuracy\": 0.8494,\n  \"precision_weighted\": 0.8456,\n  \"recall_weighted\": 0.8494,\n  \"train_time_s\": 413.1,\n  \"eval_time_s\": 6.8,\n  \"total_time_s\": 435.3\n}\n\u001b[0;31m---------------------------------------------------------------------------\u001b[0m\n\u001b[0;31mPy4JJavaError\u001b[0m                             Traceback (most recent call last)\nCell \u001b[0;32mIn[20], line 6\u001b[0m\n\u001b[1;32m      4\u001b[0m test_base \u001b[38;5;241m\u003d\u001b[39m spark\u001b[38;5;241m.\u001b[39mread\u001b[38;5;241m.\u001b[39mparquet(\u001b[38;5;124mf\u001b[39m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;132;01m{\u001b[39;00mHDFS\u001b[38;5;132;01m}\u001b[39;00m\u001b[38;5;124m/data/processed/test/\u001b[39m\u001b[38;5;124m\"\u001b[39m)\u001b[38;5;241m.\u001b[39mselect(\u001b[38;5;124m\u0027\u001b[39m\u001b[38;5;124mtext\u001b[39m\u001b[38;5;124m\u0027\u001b[39m, \u001b[38;5;124m\u0027\u001b[39m\u001b[38;5;124mlabel\u001b[39m\u001b[38;5;124m\u0027\u001b[39m)\n\u001b[1;32m      5\u001b[0m \u001b[38;5;28;01mfrom\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;21;01mpyspark\u001b[39;00m\u001b[38;5;21;01m.\u001b[39;00m\u001b[38;5;21;01mml\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;28;01mimport\u001b[39;00m PipelineModel\n\u001b[0;32m----\u003e 6\u001b[0m modelo_w2v \u001b[38;5;241m\u003d\u001b[39m \u001b[43mPipelineModel\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mload\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;124;43mf\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[38;5;132;43;01m{\u001b[39;49;00m\u001b[43mHDFS\u001b[49m\u001b[38;5;132;43;01m}\u001b[39;49;00m\u001b[38;5;124;43m/models/word2vec_mlp/\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[43m)\u001b[49m\n\u001b[1;32m      7\u001b[0m preds_w2v \u001b[38;5;241m\u003d\u001b[39m modelo_w2v\u001b[38;5;241m.\u001b[39mtransform(test_base)\u001b[38;5;241m.\u001b[39mselect(\u001b[38;5;124m\u0027\u001b[39m\u001b[38;5;124mlabel\u001b[39m\u001b[38;5;124m\u0027\u001b[39m, \u001b[38;5;124m\u0027\u001b[39m\u001b[38;5;124mprediction\u001b[39m\u001b[38;5;124m\u0027\u001b[39m)\n\u001b[1;32m      8\u001b[0m cm, reporte \u001b[38;5;241m\u003d\u001b[39m cm_desde_preds(preds_w2v)\n\nFile \u001b[0;32m/opt/spark/python/lib/pyspark.zip/pyspark/ml/util.py:369\u001b[0m, in \u001b[0;36mMLReadable.load\u001b[0;34m(cls, path)\u001b[0m\n\u001b[1;32m    366\u001b[0m \u001b[38;5;129m@classmethod\u001b[39m\n\u001b[1;32m    367\u001b[0m \u001b[38;5;28;01mdef\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;21mload\u001b[39m(\u001b[38;5;28mcls\u001b[39m, path: \u001b[38;5;28mstr\u001b[39m) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m\u003e\u001b[39m RL:\n\u001b[1;32m    368\u001b[0m \u001b[38;5;250m    \u001b[39m\u001b[38;5;124;03m\"\"\"Reads an ML instance from the input path, a shortcut of `read().load(path)`.\"\"\"\u001b[39;00m\n\u001b[0;32m--\u003e 369\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28;43mcls\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mread\u001b[49m\u001b[43m(\u001b[49m\u001b[43m)\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mload\u001b[49m\u001b[43m(\u001b[49m\u001b[43mpath\u001b[49m\u001b[43m)\u001b[49m\n\nFile \u001b[0;32m/opt/spark/python/lib/pyspark.zip/pyspark/ml/pipeline.py:282\u001b[0m, in \u001b[0;36mPipelineModelReader.load\u001b[0;34m(self, path)\u001b[0m\n\u001b[1;32m    281\u001b[0m \u001b[38;5;28;01mdef\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;21mload\u001b[39m(\u001b[38;5;28mself\u001b[39m, path: \u001b[38;5;28mstr\u001b[39m) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m\u003e\u001b[39m \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mPipelineModel\u001b[39m\u001b[38;5;124m\"\u001b[39m:\n\u001b[0;32m--\u003e 282\u001b[0m     metadata \u001b[38;5;241m\u003d\u001b[39m \u001b[43mDefaultParamsReader\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mloadMetadata\u001b[49m\u001b[43m(\u001b[49m\u001b[43mpath\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43msc\u001b[49m\u001b[43m)\u001b[49m\n\u001b[1;32m    283\u001b[0m     \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mlanguage\u001b[39m\u001b[38;5;124m\"\u001b[39m \u001b[38;5;129;01mnot\u001b[39;00m \u001b[38;5;129;01min\u001b[39;00m metadata[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mparamMap\u001b[39m\u001b[38;5;124m\"\u001b[39m] \u001b[38;5;129;01mor\u001b[39;00m metadata[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mparamMap\u001b[39m\u001b[38;5;124m\"\u001b[39m][\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mlanguage\u001b[39m\u001b[38;5;124m\"\u001b[39m] \u001b[38;5;241m!\u003d\u001b[39m \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mPython\u001b[39m\u001b[38;5;124m\"\u001b[39m:\n\u001b[1;32m    284\u001b[0m         \u001b[38;5;28;01mreturn\u001b[39;00m JavaMLReader(cast(Type[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mJavaMLReadable[PipelineModel]\u001b[39m\u001b[38;5;124m\"\u001b[39m], \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mcls))\u001b[38;5;241m.\u001b[39mload(path)\n\nFile \u001b[0;32m/opt/spark/python/lib/pyspark.zip/pyspark/ml/util.py:579\u001b[0m, in \u001b[0;36mDefaultParamsReader.loadMetadata\u001b[0;34m(path, sc, expectedClassName)\u001b[0m\n\u001b[1;32m    568\u001b[0m \u001b[38;5;250m\u001b[39m\u001b[38;5;124;03m\"\"\"\u001b[39;00m\n\u001b[1;32m    569\u001b[0m \u001b[38;5;124;03mLoad metadata saved using :py:meth:`DefaultParamsWriter.saveMetadata`\u001b[39;00m\n\u001b[1;32m    570\u001b[0m \n\u001b[0;32m   (...)\u001b[0m\n\u001b[1;32m    576\u001b[0m \u001b[38;5;124;03m    If non empty, this is checked against the loaded metadata.\u001b[39;00m\n\u001b[1;32m    577\u001b[0m \u001b[38;5;124;03m\"\"\"\u001b[39;00m\n\u001b[1;32m    578\u001b[0m metadataPath \u001b[38;5;241m\u003d\u001b[39m os\u001b[38;5;241m.\u001b[39mpath\u001b[38;5;241m.\u001b[39mjoin(path, \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mmetadata\u001b[39m\u001b[38;5;124m\"\u001b[39m)\n\u001b[0;32m--\u003e 579\u001b[0m metadataStr \u001b[38;5;241m\u003d\u001b[39m \u001b[43msc\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mtextFile\u001b[49m\u001b[43m(\u001b[49m\u001b[43mmetadataPath\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;241;43m1\u001b[39;49m\u001b[43m)\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mfirst\u001b[49m\u001b[43m(\u001b[49m\u001b[43m)\u001b[49m\n\u001b[1;32m    580\u001b[0m loadedVals \u001b[38;5;241m\u003d\u001b[39m DefaultParamsReader\u001b[38;5;241m.\u001b[39m_parseMetaData(metadataStr, expectedClassName)\n\u001b[1;32m    581\u001b[0m \u001b[38;5;28;01mreturn\u001b[39;00m loadedVals\n\nFile \u001b[0;32m/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py:2888\u001b[0m, in \u001b[0;36mRDD.first\u001b[0;34m(self)\u001b[0m\n\u001b[1;32m   2862\u001b[0m \u001b[38;5;28;01mdef\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;21mfirst\u001b[39m(\u001b[38;5;28mself\u001b[39m: \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mRDD[T]\u001b[39m\u001b[38;5;124m\"\u001b[39m) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m\u003e\u001b[39m T:\n\u001b[1;32m   2863\u001b[0m \u001b[38;5;250m    \u001b[39m\u001b[38;5;124;03m\"\"\"\u001b[39;00m\n\u001b[1;32m   2864\u001b[0m \u001b[38;5;124;03m    Return the first element in this RDD.\u001b[39;00m\n\u001b[1;32m   2865\u001b[0m \n\u001b[0;32m   (...)\u001b[0m\n\u001b[1;32m   2886\u001b[0m \u001b[38;5;124;03m    ValueError: RDD is empty\u001b[39;00m\n\u001b[1;32m   2887\u001b[0m \u001b[38;5;124;03m    \"\"\"\u001b[39;00m\n\u001b[0;32m-\u003e 2888\u001b[0m     rs \u001b[38;5;241m\u003d\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mtake\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;241;43m1\u001b[39;49m\u001b[43m)\u001b[49m\n\u001b[1;32m   2889\u001b[0m     \u001b[38;5;28;01mif\u001b[39;00m rs:\n\u001b[1;32m   2890\u001b[0m         \u001b[38;5;28;01mreturn\u001b[39;00m rs[\u001b[38;5;241m0\u001b[39m]\n\nFile \u001b[0;32m/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py:2855\u001b[0m, in \u001b[0;36mRDD.take\u001b[0;34m(self, num)\u001b[0m\n\u001b[1;32m   2852\u001b[0m         taken \u001b[38;5;241m+\u001b[39m\u001b[38;5;241m\u003d\u001b[39m \u001b[38;5;241m1\u001b[39m\n\u001b[1;32m   2854\u001b[0m p \u001b[38;5;241m\u003d\u001b[39m \u001b[38;5;28mrange\u001b[39m(partsScanned, \u001b[38;5;28mmin\u001b[39m(partsScanned \u001b[38;5;241m+\u001b[39m numPartsToTry, totalParts))\n\u001b[0;32m-\u003e 2855\u001b[0m res \u001b[38;5;241m\u003d\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mcontext\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mrunJob\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mtakeUpToNumLeft\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mp\u001b[49m\u001b[43m)\u001b[49m\n\u001b[1;32m   2857\u001b[0m items \u001b[38;5;241m+\u001b[39m\u001b[38;5;241m\u003d\u001b[39m res\n\u001b[1;32m   2858\u001b[0m partsScanned \u001b[38;5;241m+\u001b[39m\u001b[38;5;241m\u003d\u001b[39m numPartsToTry\n\nFile \u001b[0;32m/opt/spark/python/lib/pyspark.zip/pyspark/context.py:2510\u001b[0m, in \u001b[0;36mSparkContext.runJob\u001b[0;34m(self, rdd, partitionFunc, partitions, allowLocal)\u001b[0m\n\u001b[1;32m   2508\u001b[0m mappedRDD \u001b[38;5;241m\u003d\u001b[39m rdd\u001b[38;5;241m.\u001b[39mmapPartitions(partitionFunc)\n\u001b[1;32m   2509\u001b[0m \u001b[38;5;28;01massert\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_jvm \u001b[38;5;129;01mis\u001b[39;00m \u001b[38;5;129;01mnot\u001b[39;00m \u001b[38;5;28;01mNone\u001b[39;00m\n\u001b[0;32m-\u003e 2510\u001b[0m sock_info \u001b[38;5;241m\u003d\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_jvm\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mPythonRDD\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mrunJob\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_jsc\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43msc\u001b[49m\u001b[43m(\u001b[49m\u001b[43m)\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mmappedRDD\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_jrdd\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mpartitions\u001b[49m\u001b[43m)\u001b[49m\n\u001b[1;32m   2511\u001b[0m \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28mlist\u001b[39m(_load_from_socket(sock_info, mappedRDD\u001b[38;5;241m.\u001b[39m_jrdd_deserializer))\n\nFile \u001b[0;32m/opt/spark/python/lib/py4j-0.10.9.7-src.zip/py4j/java_gateway.py:1322\u001b[0m, in \u001b[0;36mJavaMember.__call__\u001b[0;34m(self, *args)\u001b[0m\n\u001b[1;32m   1316\u001b[0m command \u001b[38;5;241m\u003d\u001b[39m proto\u001b[38;5;241m.\u001b[39mCALL_COMMAND_NAME \u001b[38;5;241m+\u001b[39m\\\n\u001b[1;32m   1317\u001b[0m     \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mcommand_header \u001b[38;5;241m+\u001b[39m\\\n\u001b[1;32m   1318\u001b[0m     args_command \u001b[38;5;241m+\u001b[39m\\\n\u001b[1;32m   1319\u001b[0m     proto\u001b[38;5;241m.\u001b[39mEND_COMMAND_PART\n\u001b[1;32m   1321\u001b[0m answer \u001b[38;5;241m\u003d\u001b[39m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mgateway_client\u001b[38;5;241m.\u001b[39msend_command(command)\n\u001b[0;32m-\u003e 1322\u001b[0m return_value \u001b[38;5;241m\u003d\u001b[39m \u001b[43mget_return_value\u001b[49m\u001b[43m(\u001b[49m\n\u001b[1;32m   1323\u001b[0m \u001b[43m    \u001b[49m\u001b[43manswer\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mgateway_client\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mtarget_id\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mname\u001b[49m\u001b[43m)\u001b[49m\n\u001b[1;32m   1325\u001b[0m \u001b[38;5;28;01mfor\u001b[39;00m temp_arg \u001b[38;5;129;01min\u001b[39;00m temp_args:\n\u001b[1;32m   1326\u001b[0m     \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;28mhasattr\u001b[39m(temp_arg, \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124m_detach\u001b[39m\u001b[38;5;124m\"\u001b[39m):\n\nFile \u001b[0;32m/opt/spark/python/lib/pyspark.zip/pyspark/errors/exceptions/captured.py:179\u001b[0m, in \u001b[0;36mcapture_sql_exception.\u003clocals\u003e.deco\u001b[0;34m(*a, **kw)\u001b[0m\n\u001b[1;32m    177\u001b[0m \u001b[38;5;28;01mdef\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;21mdeco\u001b[39m(\u001b[38;5;241m*\u001b[39ma: Any, \u001b[38;5;241m*\u001b[39m\u001b[38;5;241m*\u001b[39mkw: Any) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m\u003e\u001b[39m Any:\n\u001b[1;32m    178\u001b[0m     \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[0;32m--\u003e 179\u001b[0m         \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[43mf\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[43ma\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[38;5;241;43m*\u001b[39;49m\u001b[43mkw\u001b[49m\u001b[43m)\u001b[49m\n\u001b[1;32m    180\u001b[0m     \u001b[38;5;28;01mexcept\u001b[39;00m Py4JJavaError \u001b[38;5;28;01mas\u001b[39;00m e:\n\u001b[1;32m    181\u001b[0m         converted \u001b[38;5;241m\u003d\u001b[39m convert_exception(e\u001b[38;5;241m.\u001b[39mjava_exception)\n\nFile \u001b[0;32m/opt/spark/python/lib/py4j-0.10.9.7-src.zip/py4j/protocol.py:326\u001b[0m, in \u001b[0;36mget_return_value\u001b[0;34m(answer, gateway_client, target_id, name)\u001b[0m\n\u001b[1;32m    324\u001b[0m value \u001b[38;5;241m\u003d\u001b[39m OUTPUT_CONVERTER[\u001b[38;5;28mtype\u001b[39m](answer[\u001b[38;5;241m2\u001b[39m:], gateway_client)\n\u001b[1;32m    325\u001b[0m \u001b[38;5;28;01mif\u001b[39;00m answer[\u001b[38;5;241m1\u001b[39m] \u001b[38;5;241m\u003d\u003d\u001b[39m REFERENCE_TYPE:\n\u001b[0;32m--\u003e 326\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m Py4JJavaError(\n\u001b[1;32m    327\u001b[0m         \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mAn error occurred while calling \u001b[39m\u001b[38;5;132;01m{0}\u001b[39;00m\u001b[38;5;132;01m{1}\u001b[39;00m\u001b[38;5;132;01m{2}\u001b[39;00m\u001b[38;5;124m.\u001b[39m\u001b[38;5;130;01m\\n\u001b[39;00m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;241m.\u001b[39m\n\u001b[1;32m    328\u001b[0m         \u001b[38;5;28mformat\u001b[39m(target_id, \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124m.\u001b[39m\u001b[38;5;124m\"\u001b[39m, name), value)\n\u001b[1;32m    329\u001b[0m \u001b[38;5;28;01melse\u001b[39;00m:\n\u001b[1;32m    330\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m Py4JError(\n\u001b[1;32m    331\u001b[0m         \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mAn error occurred while calling \u001b[39m\u001b[38;5;132;01m{0}\u001b[39;00m\u001b[38;5;132;01m{1}\u001b[39;00m\u001b[38;5;132;01m{2}\u001b[39;00m\u001b[38;5;124m. Trace:\u001b[39m\u001b[38;5;130;01m\\n\u001b[39;00m\u001b[38;5;132;01m{3}\u001b[39;00m\u001b[38;5;130;01m\\n\u001b[39;00m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;241m.\u001b[39m\n\u001b[1;32m    332\u001b[0m         \u001b[38;5;28mformat\u001b[39m(target_id, \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124m.\u001b[39m\u001b[38;5;124m\"\u001b[39m, name, value))\n\n\u001b[0;31mPy4JJavaError\u001b[0m: An error occurred while calling z:org.apache.spark.api.python.PythonRDD.runJob.\n: org.apache.spark.SparkException: Job aborted due to stage failure: Task 0 in stage 3.0 failed 4 times, most recent failure: Lost task 0.3 in stage 3.0 (TID 6) (172.20.0.6 executor 0): java.io.IOException: Cannot run program \"python\": error\u003d2, No such file or directory\n\tat java.base/java.lang.ProcessBuilder.start(Unknown Source)\n\tat java.base/java.lang.ProcessBuilder.start(Unknown Source)\n\tat org.apache.spark.api.python.PythonWorkerFactory.startDaemon(PythonWorkerFactory.scala:239)\n\tat org.apache.spark.api.python.PythonWorkerFactory.createThroughDaemon(PythonWorkerFactory.scala:139)\n\tat org.apache.spark.api.python.PythonWorkerFactory.create(PythonWorkerFactory.scala:107)\n\tat org.apache.spark.SparkEnv.createPythonWorker(SparkEnv.scala:124)\n\tat org.apache.spark.api.python.BasePythonRunner.compute(PythonRunner.scala:174)\n\tat org.apache.spark.api.python.PythonRDD.compute(PythonRDD.scala:67)\n\tat org.apache.spark.rdd.RDD.computeOrReadCheckpoint(RDD.scala:367)\n\tat org.apache.spark.rdd.RDD.iterator(RDD.scala:331)\n\tat org.apache.spark.scheduler.ResultTask.runTask(ResultTask.scala:93)\n\tat org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)\n\tat org.apache.spark.scheduler.Task.run(Task.scala:141)\n\tat org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)\n\tat org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)\n\tat org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)\n\tat org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)\n\tat org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)\n\tat java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)\n\tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)\n\tat java.base/java.lang.Thread.run(Unknown Source)\nCaused by: java.io.IOException: error\u003d2, No such file or directory\n\tat java.base/java.lang.ProcessImpl.forkAndExec(Native Method)\n\tat java.base/java.lang.ProcessImpl.\u003cinit\u003e(Unknown Source)\n\tat java.base/java.lang.ProcessImpl.start(Unknown Source)\n\t... 21 more\n\nDriver stacktrace:\n\tat org.apache.spark.scheduler.DAGScheduler.failJobAndIndependentStages(DAGScheduler.scala:2856)\n\tat org.apache.spark.scheduler.DAGScheduler.$anonfun$abortStage$2(DAGScheduler.scala:2792)\n\tat org.apache.spark.scheduler.DAGScheduler.$anonfun$abortStage$2$adapted(DAGScheduler.scala:2791)\n\tat scala.collection.mutable.ResizableArray.foreach(ResizableArray.scala:62)\n\tat scala.collection.mutable.ResizableArray.foreach$(ResizableArray.scala:55)\n\tat scala.collection.mutable.ArrayBuffer.foreach(ArrayBuffer.scala:49)\n\tat org.apache.spark.scheduler.DAGScheduler.abortStage(DAGScheduler.scala:2791)\n\tat org.apache.spark.scheduler.DAGScheduler.$anonfun$handleTaskSetFailed$1(DAGScheduler.scala:1247)\n\tat org.apache.spark.scheduler.DAGScheduler.$anonfun$handleTaskSetFailed$1$adapted(DAGScheduler.scala:1247)\n\tat scala.Option.foreach(Option.scala:407)\n\tat org.apache.spark.scheduler.DAGScheduler.handleTaskSetFailed(DAGScheduler.scala:1247)\n\tat org.apache.spark.scheduler.DAGSchedulerEventProcessLoop.doOnReceive(DAGScheduler.scala:3060)\n\tat org.apache.spark.scheduler.DAGSchedulerEventProcessLoop.onReceive(DAGScheduler.scala:2994)\n\tat org.apache.spark.scheduler.DAGSchedulerEventProcessLoop.onReceive(DAGScheduler.scala:2983)\n\tat org.apache.spark.util.EventLoop$$anon$1.run(EventLoop.scala:49)\n\tat org.apache.spark.scheduler.DAGScheduler.runJob(DAGScheduler.scala:989)\n\tat org.apache.spark.SparkContext.runJob(SparkContext.scala:2393)\n\tat org.apache.spark.SparkContext.runJob(SparkContext.scala:2414)\n\tat org.apache.spark.SparkContext.runJob(SparkContext.scala:2433)\n\tat org.apache.spark.api.python.PythonRDD$.runJob(PythonRDD.scala:181)\n\tat org.apache.spark.api.python.PythonRDD.runJob(PythonRDD.scala)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)\n\tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:566)\n\tat py4j.reflection.MethodInvoker.invoke(MethodInvoker.java:244)\n\tat py4j.reflection.ReflectionEngine.invoke(ReflectionEngine.java:374)\n\tat py4j.Gateway.invoke(Gateway.java:282)\n\tat py4j.commands.AbstractCommand.invokeMethod(AbstractCommand.java:132)\n\tat py4j.commands.CallCommand.execute(CallCommand.java:79)\n\tat py4j.GatewayConnection.run(GatewayConnection.java:238)\n\tat java.base/java.lang.Thread.run(Thread.java:829)\nCaused by: java.io.IOException: Cannot run program \"python\": error\u003d2, No such file or directory\n\tat java.base/java.lang.ProcessBuilder.start(Unknown Source)\n\tat java.base/java.lang.ProcessBuilder.start(Unknown Source)\n\tat org.apache.spark.api.python.PythonWorkerFactory.startDaemon(PythonWorkerFactory.scala:239)\n\tat org.apache.spark.api.python.PythonWorkerFactory.createThroughDaemon(PythonWorkerFactory.scala:139)\n\tat org.apache.spark.api.python.PythonWorkerFactory.create(PythonWorkerFactory.scala:107)\n\tat org.apache.spark.SparkEnv.createPythonWorker(SparkEnv.scala:124)\n\tat org.apache.spark.api.python.BasePythonRunner.compute(PythonRunner.scala:174)\n\tat org.apache.spark.api.python.PythonRDD.compute(PythonRDD.scala:67)\n\tat org.apache.spark.rdd.RDD.computeOrReadCheckpoint(RDD.scala:367)\n\tat org.apache.spark.rdd.RDD.iterator(RDD.scala:331)\n\tat org.apache.spark.scheduler.ResultTask.runTask(ResultTask.scala:93)\n\tat org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)\n\tat org.apache.spark.scheduler.Task.run(Task.scala:141)\n\tat org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)\n\tat org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)\n\tat org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)\n\tat org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)\n\tat org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)\n\tat java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)\n\tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)\n\tat java.base/java.lang.Thread.run(Unknown Source)\nCaused by: java.io.IOException: error\u003d2, No such file or directory\n\tat java.base/java.lang.ProcessImpl.forkAndExec(Native Method)\n\tat java.base/java.lang.ProcessImpl.\u003cinit\u003e(Unknown Source)\n\tat java.base/java.lang.ProcessImpl.start(Unknown Source)\n\t... 21 more\n"
+          }
+        ]
+      },
+      "apps": [],
+      "runtimeInfos": {
+        "jobUrl": {
+          "propertyName": "jobUrl",
+          "label": "SPARK JOB",
+          "tooltip": "View in Spark web UI",
+          "group": "spark",
+          "values": [
+            {
+              "jobUrl": "http://zeppelin:4040/jobs/job?id\u003d4"
+            },
+            {
+              "jobUrl": "http://zeppelin:4040/jobs/job?id\u003d5"
+            }
+          ],
+          "interpreterSettingId": "spark"
+        }
+      },
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1777715123371_1928560971",
+      "id": "p2",
+      "dateCreated": "2026-05-02 09:45:23.371",
+      "dateStarted": "2026-05-02 09:48:46.818",
+      "dateFinished": "2026-05-02 09:48:50.184",
+      "status": "ERROR"
+    },
+    {
+      "title": "3. Modelo 07 - USE + MLlib MLP",
+      "text": "%pyspark\nprint(json.dumps(metricas_use_mllib, indent\u003d2) if metricas_use_mllib else \u0027Metricas no disponibles\u0027)\n\nif metricas_use_mllib and HAS_SPARKNLP:\n    test_base \u003d spark.read.parquet(f\"{HDFS}/data/processed/test/\").select(\u0027text\u0027, \u0027label\u0027)\n    document \u003d DocumentAssembler().setInputCol(\u0027text\u0027).setOutputCol(\u0027document\u0027)\n    use \u003d UniversalSentenceEncoder.pretrained(\u0027tfhub_use\u0027, \u0027en\u0027).setInputCols([\u0027document\u0027]).setOutputCol(\u0027sentence_embeddings\u0027)\n    emb_model \u003d Pipeline(stages\u003d[document, use]).fit(test_base.limit(1))\n    test_feat \u003d (emb_model.transform(test_base)\n                 .withColumn(\u0027features\u0027, array_to_vector(F.col(\u0027sentence_embeddings\u0027).getItem(0)[\u0027embeddings\u0027]))\n                 .select(\u0027features\u0027, \u0027label\u0027))\n    mlp_model \u003d MultilayerPerceptronClassificationModel.load(f\"{HDFS}/models/spark_nlp_use_mllib_mlp/\")\n    preds_use_mllib \u003d mlp_model.transform(test_feat).select(\u0027label\u0027, \u0027prediction\u0027)\n    cm, reporte \u003d cm_desde_preds(preds_use_mllib)\n    pintar_cm(cm, \u0027Nivel 2 - USE + MLlib MLP\u0027)\n    print(reporte)\nelif metricas_use_mllib:\n    print(\u0027Metricas cargadas, pero Zeppelin no tiene Spark NLP para reconstruir la matriz de confusion\u0027)",
+      "user": "anonymous",
+      "dateUpdated": "2026-05-02 09:49:04.554",
+      "progress": 0,
+      "config": {
+        "colWidth": 12.0,
+        "fontSize": 9.0,
+        "results": {},
+        "enabled": true,
+        "editorSetting": {
+          "language": "python",
+          "editOnDblClick": false,
+          "completionKey": "TAB",
+          "completionSupport": true
+        }
+      },
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "results": {
+        "code": "SUCCESS",
+        "msg": [
+          {
+            "type": "TEXT",
+            "data": "{\n  \"f1_weighted\": 0.8541,\n  \"f1_macro\": null,\n  \"f1_explicit\": null,\n  \"f1_not_explicit\": null,\n  \"accuracy\": 0.8564,\n  \"precision_weighted\": 0.8532,\n  \"recall_weighted\": 0.8564,\n  \"auc_roc\": 0.8958,\n  \"model\": \"SparkNLP_USE_MLlib_MLP\",\n  \"embedding\": \"tfhub_use\",\n  \"mlp_layers\": [\n    512,\n    256,\n    128,\n    2\n  ],\n  \"embed_time_s\": 177.0,\n  \"train_time_s\": 1447.5,\n  \"eval_time_s\": 5.2,\n  \"total_time_s\": 1710.9\n}\nMetricas cargadas, pero Zeppelin no tiene Spark NLP para reconstruir la matriz de confusion\n"
+          }
+        ]
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1777715123371_1555046938",
+      "id": "p3",
+      "dateCreated": "2026-05-02 09:45:23.371",
+      "dateStarted": "2026-05-02 09:49:04.569",
+      "dateFinished": "2026-05-02 09:49:04.793",
+      "status": "FINISHED"
+    },
+    {
+      "title": "4. Modelo 05 - Spark NLP ClassifierDL",
+      "text": "%pyspark\nprint(json.dumps(metricas_sparknlp, indent\u003d2) if metricas_sparknlp else \u0027Metricas no disponibles\u0027)\nprint(\u0027\\nNota: este modelo se muestra como experimento Spark NLP. Si no hay metricas, el entrenamiento no llego a completarse en el entorno actual.\u0027)",
+      "user": "anonymous",
+      "dateUpdated": "2026-05-02 09:45:23.371",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1777715123371_1501620018",
+      "id": "p4",
+      "dateCreated": "2026-05-02 09:45:23.371",
+      "status": "READY"
+    },
+    {
+      "title": "5. TensorFlow - Mejor baseline",
+      "text": "%pyspark\nif mejor_tf:\n    print(json.dumps(mejor_tf, indent\u003d2))\n    if mejor_tf.get(\u0027confusion_matrix\u0027):\n        pintar_cm(np.array(mejor_tf.get(\u0027confusion_matrix\u0027)), f\"TensorFlow - {mejor_tf.get(\u0027model\u0027)}\")\nelse:\n    print(\u0027No hay resultados TensorFlow disponibles\u0027)",
+      "user": "anonymous",
+      "dateUpdated": "2026-05-02 09:45:23.372",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1777715123371_1461746575",
+      "id": "p5",
+      "dateCreated": "2026-05-02 09:45:23.371",
+      "status": "READY"
+    },
+    {
+      "title": "6. Comparativa final",
+      "text": "%pyspark\nmodelos \u003d []\naccuracy \u003d []\nf1_weighted \u003d []\nf1_macro \u003d []\nauc \u003d []\n\nfor nombre, fuente in [\n    (\u0027Nivel 1\u0027, metricas_w2v),\n    (\u0027Nivel 2\u0027, metricas_use_mllib),\n    (\u0027Nivel 3\u0027, metricas_sparknlp),\n    (\u0027Nivel 4\u0027, mejor_tf),\n]:\n    if fuente:\n        modelos.append(nombre)\n        accuracy.append(fuente.get(\u0027accuracy\u0027) or 0.0)\n        f1_weighted.append(fuente.get(\u0027f1_weighted\u0027) or 0.0)\n        f1_macro.append(fuente.get(\u0027f1_macro\u0027) or 0.0)\n        auc.append(fuente.get(\u0027auc_roc\u0027) or 0.0)\n\nif not modelos:\n    print(\u0027No hay metricas disponibles para comparar\u0027)\nelse:\n    fig, axes \u003d plt.subplots(1, 4, figsize\u003d(22, 5))\n    series \u003d [(\u0027accuracy\u0027, accuracy), (\u0027f1_weighted\u0027, f1_weighted), (\u0027f1_macro\u0027, f1_macro), (\u0027auc_roc\u0027, auc)]\n    for ax, (titulo, valores) in zip(axes, series):\n        bars \u003d ax.bar(modelos, valores, color\u003d[\u0027#1f77b4\u0027, \u0027#2ca02c\u0027, \u0027#e4572e\u0027, \u0027#9467bd\u0027][:len(modelos)])\n        ax.set_title(titulo)\n        ax.set_ylim(0, 1.05)\n        ax.grid(axis\u003d\u0027y\u0027, alpha\u003d0.25)\n        for bar, valor in zip(bars, valores):\n            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.015, f\u0027{valor:.3f}\u0027, ha\u003d\u0027center\u0027, va\u003d\u0027bottom\u0027, fontsize\u003d9)\n    plt.tight_layout()\n    plt.show()",
+      "user": "anonymous",
+      "dateUpdated": "2026-05-02 09:45:23.372",
+      "progress": 0,
+      "config": {},
+      "settings": {
+        "params": {},
+        "forms": {}
+      },
+      "apps": [],
+      "runtimeInfos": {},
+      "progressUpdateIntervalMs": 500,
+      "jobName": "paragraph_1777715123372_64750390",
+      "id": "p6",
+      "dateCreated": "2026-05-02 09:45:23.372",
+      "status": "READY"
+    }
+  ],
+  "name": "Visualizaciones - Deteccion Contenido Explicito -new",
+  "id": "2MQ44BEYA",
+  "defaultInterpreterGroup": "spark",
+  "version": "0.12.0",
+  "noteParams": {},
+  "noteForms": {},
+  "angularObjects": {},
+  "config": {
+    "isZeppelinNotebookCronEnable": false
+  },
+  "info": {}
+}

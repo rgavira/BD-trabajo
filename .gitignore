@@ -1,0 +1,16 @@
+# SPARK LIKE GIT-IGNORE
+*.db
+*.sqlite3
+
+# Ignorar carpetas y archivos de Spark
+spark-events/
+spark-warehouse/
+.env
+
+venv
+.venv
+
+__pycache__/
+*.pyc
+
+scripts/

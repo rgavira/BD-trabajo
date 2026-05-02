@@ -1,0 +1,353 @@
+# =============================================================================
+# docker-compose-trabajo.yml — Pipeline Big Data: Detección de Contenido Explícito
+#
+# Servicios:
+#   1. postgres       — Backend de Airflow
+#   2. namenode       — HDFS Namenode (fuente de verdad distribuida)
+#   3. datanode1/2    — HDFS Datanodes (replicación × 2)
+#   4. spark-master   — Spark Master
+#   5. spark-worker-1 — Spark Worker 1 (7 GB RAM, 4 cores)
+#   6. spark-worker-2 — Spark Worker 2 (7 GB RAM, 4 cores)
+#   7. zeppelin       — Notebooks interactivos + visualizaciones
+#   8. airflow        — Orquestador del DAG completo
+#
+# Uso:
+#   Arrancar:   docker compose -f docker-compose-trabajo.yml up -d
+#   Parar:      docker compose -f docker-compose-trabajo.yml stop
+#   Destruir:   docker compose -f docker-compose-trabajo.yml down -v
+#
+# Antes de arrancar:
+#   - Pon el CSV en ./data/spotify_dataset.csv
+#
+# Puertos:
+#   Airflow    → http://localhost:8081   (admin / admin)
+#   Spark UI   → http://localhost:8080
+#   HDFS UI    → http://localhost:9870
+#   Zeppelin   → http://localhost:8888
+#   History    → http://localhost:18080
+# =============================================================================
+
+networks:
+  bd-trabajo-net:
+    driver: bridge
+
+volumes:
+  postgres-db:
+  airflow-logs:
+  hadoop-namenode:
+  hadoop-datanode1:
+  hadoop-datanode2:
+  spark-home:        # Binarios de Spark compartidos entre todos los contenedores
+  zeppelin-logs:
+
+services:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 1. PostgreSQL — Backend de Airflow
+  # ──────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15
+    container_name: bd-postgres
+    hostname: postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bd-trabajo-net
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 2. HDFS Namenode — Maestro del sistema de ficheros distribuido
+  #    WebHDFS REST API en :9870   |   HDFS RPC en :9000
+  # ──────────────────────────────────────────────────────────────────────────
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: bd-namenode
+    hostname: namenode
+    environment:
+      CLUSTER_NAME: bd-trabajo-cluster
+      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
+      CORE_CONF_hadoop_http_staticuser_user: root
+      CORE_CONF_hadoop_proxyuser_root_hosts: "*"
+      CORE_CONF_hadoop_proxyuser_root_groups: "*"
+      HDFS_CONF_dfs_webhdfs_enabled: "true"
+      HDFS_CONF_dfs_permissions_enabled: "false"
+      HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check: "false"
+      HDFS_CONF_dfs_replication: 2
+      HDFS_CONF_dfs_namenode_name_dir: file:///hadoop/dfs/name
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    volumes:
+      - hadoop-namenode:/hadoop/dfs/name
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9870/webhdfs/v1/?op=LISTSTATUS"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    networks:
+      - bd-trabajo-net
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 3a. HDFS Datanode 1
+  # ──────────────────────────────────────────────────────────────────────────
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: bd-datanode1
+    hostname: datanode1
+    environment:
+      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
+      CORE_CONF_hadoop_http_staticuser_user: root
+      HDFS_CONF_dfs_webhdfs_enabled: "true"
+      HDFS_CONF_dfs_permissions_enabled: "false"
+      HDFS_CONF_dfs_replication: 2
+      HDFS_CONF_dfs_datanode_data_dir: file:///hadoop/dfs/data
+    ports:
+      - "9864:9864"
+    volumes:
+      - hadoop-datanode1:/hadoop/dfs/data
+    depends_on:
+      namenode:
+        condition: service_healthy
+    networks:
+      - bd-trabajo-net
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 3b. HDFS Datanode 2 (replicación factor 2)
+  # ──────────────────────────────────────────────────────────────────────────
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: bd-datanode2
+    hostname: datanode2
+    environment:
+      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
+      CORE_CONF_hadoop_http_staticuser_user: root
+      HDFS_CONF_dfs_webhdfs_enabled: "true"
+      HDFS_CONF_dfs_permissions_enabled: "false"
+      HDFS_CONF_dfs_replication: 2
+      HDFS_CONF_dfs_datanode_data_dir: file:///hadoop/dfs/data
+    ports:
+      - "9865:9864"
+    volumes:
+      - hadoop-datanode2:/hadoop/dfs/data
+    depends_on:
+      namenode:
+        condition: service_healthy
+    networks:
+      - bd-trabajo-net
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 4. Spark Master
+  # ──────────────────────────────────────────────────────────────────────────
+  spark-master:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark-trabajo
+    platform: linux/amd64
+    container_name: bd-spark-master
+    hostname: spark-master
+    user: root
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    environment:
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - PYSPARK_PYTHON=python3.11
+      - PYSPARK_DRIVER_PYTHON=python3.11
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    volumes:
+      - spark-home:/opt/spark
+      - ./spark-events:/tmp/spark-events
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+    networks:
+      - bd-trabajo-net
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 5. Spark Worker 1  — 7 GB RAM, 4 cores
+  #    Instala numpy + pandas + pyarrow para jobs Spark y Pandas UDFs
+  # ──────────────────────────────────────────────────────────────────────────
+  spark-worker-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark-trabajo
+    platform: linux/amd64
+    container_name: bd-spark-worker-1
+    hostname: spark-worker-1
+    user: root
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    environment:
+      - SPARK_WORKER_MEMORY=7g
+      - SPARK_WORKER_CORES=4
+      - SPARK_WORKER_WEBUI_PORT=8082
+      - PYSPARK_PYTHON=python3.11
+      - PYSPARK_DRIVER_PYTHON=python3.11
+    ports:
+      - "8082:8082"
+    volumes:
+      - spark-home:/opt/spark
+      - ./data:/opt/data
+      - ./models:/opt/models
+      - ./spark-events:/tmp/spark-events
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    mem_limit: 9g
+    networks:
+      - bd-trabajo-net
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 6. Spark Worker 2  — 7 GB RAM, 4 cores
+  # ──────────────────────────────────────────────────────────────────────────
+  spark-worker-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark-trabajo
+    platform: linux/amd64
+    container_name: bd-spark-worker-2
+    hostname: spark-worker-2
+    user: root
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    environment:
+      - SPARK_WORKER_MEMORY=7g
+      - SPARK_WORKER_CORES=4
+      - SPARK_WORKER_WEBUI_PORT=8083
+      - PYSPARK_PYTHON=python3.11
+      - PYSPARK_DRIVER_PYTHON=python3.11
+    ports:
+      - "8083:8083"
+    volumes:
+      - spark-home:/opt/spark
+      - ./data:/opt/data
+      - ./models:/opt/models
+      - ./spark-events:/tmp/spark-events
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    mem_limit: 9g
+    networks:
+      - bd-trabajo-net
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 7. Spark History Server — Monitorización de jobs pasados
+  # ──────────────────────────────────────────────────────────────────────────
+  spark-history:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark-trabajo
+    platform: linux/amd64
+    container_name: bd-spark-history
+    user: root
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+    environment:
+      - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=/tmp/spark-events
+    ports:
+      - "18080:18080"
+    volumes:
+      - spark-home:/opt/spark
+      - ./spark-events:/tmp/spark-events
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    networks:
+      - bd-trabajo-net
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 8. Apache Zeppelin — Notebooks interactivos para visualizaciones
+  #    Instala matplotlib + seaborn para los gráficos de resultados
+  # ──────────────────────────────────────────────────────────────────────────
+  zeppelin:
+    image: apache/zeppelin:0.12.0
+    platform: linux/amd64
+    container_name: bd-zeppelin
+    hostname: zeppelin
+    command: >
+      bash -c "mkdir -p /tmp/matplotlib &&
+               pip install matplotlib seaborn pandas pyarrow scikit-learn --quiet &&
+               /opt/zeppelin/bin/zeppelin.sh"
+    environment:
+      - ZEPPELIN_ADDR=0.0.0.0
+      - ZEPPELIN_PORT=8888
+      - SPARK_HOME=/opt/spark
+      - MASTER=spark://spark-master:7077
+      - SPARK_MASTER=spark://spark-master:7077
+      - ZEPPELIN_NOTEBOOK_DIR=/opt/zeppelin/notebook
+      - MPLCONFIGDIR=/tmp/matplotlib
+      # Configuración HDFS para el intérprete de Spark
+      - SPARK_SUBMIT_OPTIONS=--conf spark.hadoop.fs.defaultFS=hdfs://namenode:9000 --conf spark.hadoop.dfs.client.use.datanode.hostname=true
+    ports:
+      - "8888:8888"
+    volumes:
+      - spark-home:/opt/spark
+      - ./notebooks:/opt/zeppelin/notebook
+      - ./data:/opt/data
+      - ./models:/opt/models
+      - zeppelin-logs:/opt/zeppelin/logs
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      namenode:
+        condition: service_healthy
+    mem_limit: 2g
+    networks:
+      - bd-trabajo-net
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 9. Apache Airflow — Orquestador del DAG completo
+  #    Webserver en :8081   (admin / admin)
+  # ──────────────────────────────────────────────────────────────────────────
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow-trabajo
+    container_name: bd-airflow
+    hostname: airflow
+    user: "0:0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      namenode:
+        condition: service_healthy
+      spark-master:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__FERNET_KEY: d6nNXtWJQL85dCkOTB8FRQ5TPAi6XW7Xbw3l84QJ8q8=
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: 120
+      AIRFLOW__CORE__HOSTNAME_CALLABLE: "socket:gethostname"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
+      SPARK_HOME: /opt/spark
+      JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
+      PYSPARK_PYTHON: python3.11
+      PYSPARK_DRIVER_PYTHON: python3.11
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/data
+      - ./spark-jobs:/opt/spark-jobs
+      - ./models:/opt/models
+      - spark-home:/opt/spark
+      - ./spark-events:/tmp/spark-events
+      - airflow-logs:/opt/airflow/logs
+    entrypoint: /bin/bash
+    command: /init-airflow-trabajo.sh
+    ports:
+      - "8081:8080"
+    networks:
+      - bd-trabajo-net
+    mem_limit: 14g

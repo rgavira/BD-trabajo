@@ -1,0 +1,42 @@
+# =============================================================================
+# Dockerfile.airflow-trabajo
+# Base: apache/airflow:2.9.3-python3.11
+# Añade: Java, TensorFlow CPU y librerías del proyecto
+# =============================================================================
+
+FROM apache/airflow:2.9.3-python3.11
+
+ARG AIRFLOW_VERSION=2.9.3
+
+USER root
+
+# default-jdk instala Java 17 en bookworm. Spark busca Java en la ruta de Java 11,
+# así que creamos un symlink para que lo encuentre en la ruta esperada.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends default-jdk curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -sf /usr/lib/jvm/default-java /usr/lib/jvm/java-11-openjdk-amd64
+
+ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+USER airflow
+
+RUN pip install --no-cache-dir \
+    "apache-airflow==${AIRFLOW_VERSION}" \
+    "apache-airflow-providers-postgres>=5.6.0" \
+    "psycopg2-binary>=2.9.6" \
+    "tensorflow==2.16.1" \
+    "gensim==4.3.3" \
+    "scikit-learn==1.3.2" \
+    "typing_extensions>=4.12.0" \
+    "pandas>=2.0.0" \
+    "pyarrow>=12.0.0" \
+    "requests>=2.31.0" \
+    "spark-nlp==6.4.0"
+
+USER root
+COPY init-airflow-trabajo.sh /init-airflow-trabajo.sh
+RUN chmod +x /init-airflow-trabajo.sh
+
+USER airflow
