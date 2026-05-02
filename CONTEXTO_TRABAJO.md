@@ -145,6 +145,16 @@ Lectura arquitectonica:
 
 Esta es la pieza central que el proyecto defiende.
 
+Resultados observados:
+
+- `f1_weighted = 0.8491`
+- `f1_macro = 0.8100`
+- `f1_explicit = 0.7215`
+- `accuracy = 0.8513`
+- `auc_roc = 0.8947`
+- `train_time_s = 417.2`
+- `total_time_s = 439.1`
+
 ---
 
 ## Nivel 2 - Spark NLP
@@ -187,6 +197,23 @@ Lectura correcta:
 
 - `Spark NLP` si aporta valor fuerte en la **representacion textual**
 - `MLlib` sigue siendo la pieza que garantiza el entrenamiento distribuido real
+
+Resultados observados:
+
+- `f1_weighted = 0.8544`
+- `f1_macro = 0.8168`
+- `f1_explicit = 0.7317`
+- `accuracy = 0.8564`
+- `auc_roc = 0.8954`
+- `embed_time_s = 177.2`
+- `train_time_s = 1799.5`
+- `total_time_s = 2065.8`
+
+Lectura comparativa:
+
+- hay mejora real frente a `Word2Vec + MLP`
+- la mejora es moderada, no disruptiva
+- el coste temporal aumenta mucho dentro del entorno actual
 
 ---
 

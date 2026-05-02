@@ -137,6 +137,17 @@ Lectura correcta:
 - aqui si estamos haciendo **machine learning distribuido real**
 - aqui si estamos aprovechando el cluster con honestidad
 
+Resultados obtenidos:
+
+- `f1_weighted = 0.8491`
+- `f1_macro = 0.8100`
+- `f1_explicit = 0.7215`
+- `f1_not_explicit = 0.8986`
+- `accuracy = 0.8513`
+- `auc_roc = 0.8947`
+- `train_time_s = 417.2`
+- `total_time_s = 439.1`
+
 ---
 
 ### Nivel 2a - Spark NLP embeddings + MLlib MLP
@@ -160,6 +171,40 @@ Por que es importante:
 - demuestra que `Spark NLP` si aporta valor en este proyecto
 - pero ese valor aparece sobre todo en la **representacion**
 - seguimos apoyandonos en `MLlib` para mantener el entrenamiento realmente distribuido
+
+Resultados obtenidos:
+
+- `f1_weighted = 0.8544`
+- `f1_macro = 0.8168`
+- `f1_explicit = 0.7317`
+- `f1_not_explicit = 0.9020`
+- `accuracy = 0.8564`
+- `auc_roc = 0.8954`
+- `embed_time_s = 177.2`
+- `train_time_s = 1799.5`
+- `total_time_s = 2065.8`
+
+Lectura de estos resultados:
+
+- `USE + MLlib` mejora de forma modesta pero consistente a la baseline `Word2Vec + MLP`
+- la mejora mas visible aparece en `f1_explicit`, que sube de `0.7215` a `0.7317`
+- el coste computacional crece mucho: el entrenamiento pasa de `417.2 s` a `1799.5 s`
+
+---
+
+## Comparativa principal
+
+| Nivel | Modelo | F1 weighted | F1 macro | F1 explicit | Accuracy | AUC ROC | Tiempo total |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 1 | `Word2Vec + MLP (MLlib)` | 0.8491 | 0.8100 | 0.7215 | 0.8513 | 0.8947 | 439.1 s |
+| 2a | `USE + MLP (MLlib)` | 0.8544 | 0.8168 | 0.7317 | 0.8564 | 0.8954 | 2065.8 s |
+
+Que nos dice esta comparativa:
+
+- `Spark NLP + USE` mejora la calidad final, pero no cambia radicalmente el problema
+- la mejora existe, especialmente en la clase `explicit`
+- el precio de esa mejora es alto en tiempo de computo dentro del entorno actual
+- por eso la defensa fuerte del proyecto sigue estando en `MLlib` como nucleo distribuido, y en `Spark NLP` como mejora semantica
 
 ---
 
