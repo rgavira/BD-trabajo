@@ -7,8 +7,7 @@ Tareas activas:
   2. spark_etl                  -> ETL distribuido: limpieza, HDFS raw + processed
   3. spark_word2vec_mlp         -> Baseline distribuida con Spark MLlib
   4. spark_use_mllib_mlp        -> USE + MLP MLlib, 100% distribuido
-  5. spark_roberta_zeroshot     -> Inferencia distribuida zero-shot con RoBERTa (sin training)
-  6. spark_tensorflow_baselines -> Spark como capa de datos + Keras en CPU
+  5. spark_distilbart_zeroshot  -> Inferencia zero-shot con DistilBART como frontera del proyecto
 
 Nota sobre la tarea 5:
   El script original (05_spark_nlp_classifierdl.py) intentaba entrenar ClassifierDL
@@ -16,11 +15,10 @@ Nota sobre la tarea 5:
   y entrena con TF en el driver, no en los workers. Ese script se conserva en
   spark-jobs/ como referencia historica del limite encontrado.
 
-  La tarea 5 usa ahora 05b_roberta_zeroshot.py: inferencia zero-shot distribuida
-  con RoBERTa-large-MNLI. El .transform() corre en workers sin collect() interno.
+  La tarea 5 usa ahora 05b_distilbart_zeroshot.py: inferencia zero-shot con
+  DistilBART-MNLI. El .transform() corre desde Spark, pero el coste en CPU y
+  el peso del driver marcan la frontera practica del entorno.
   Esto ilustra el patron de Desacoplamiento de Entrenamiento e Inferencia.
-
-  El estudio comparativo de MLlib queda fuera del DAG principal.
 """
 
 from datetime import datetime, timedelta
@@ -65,10 +63,10 @@ default_args = {
 dag = DAG(
     "explicit_lyrics_pipeline",
     default_args=default_args,
-    description="Pipeline Big Data: CSV -> HDFS -> MLlib -> USE+MLlib -> Spark NLP -> TensorFlow",
+    description="Pipeline Big Data: CSV -> HDFS -> MLlib -> USE+MLlib -> DistilBART zero-shot",
     schedule_interval=None,
     catchup=False,
-    tags=["explicit-lyrics", "nlp", "spark", "hdfs", "mllib", "tensorflow"],
+    tags=["explicit-lyrics", "nlp", "spark", "hdfs", "mllib", "distilbart"],
 )
 
 
@@ -150,8 +148,8 @@ t4_use_mllib_mlp = BashOperator(
 )
 
 
-t5_roberta_zeroshot = BashOperator(
-    task_id="spark_roberta_zeroshot",
+t5_distilbart_zeroshot = BashOperator(
+    task_id="spark_distilbart_zeroshot",
     bash_command=(
         f"TF_CPP_MIN_LOG_LEVEL=2 "
         f"TF_FORCE_GPU_ALLOW_GROWTH=true "
@@ -161,26 +159,12 @@ t5_roberta_zeroshot = BashOperator(
         f"{SPARK_BASE_CONF} "
         f"{SPARK_NLP_CONF} "
         f"--executor-memory 4g --executor-cores 2 --num-executors 2 "
-        f"--driver-memory 6g "
-        f"/opt/spark-jobs/05b_roberta_zeroshot.py"
-    ),
-    dag=dag,
-)
-
-
-t6_tensorflow = BashOperator(
-    task_id="spark_tensorflow_baselines",
-    bash_command=(
-        f"{SPARK_SUBMIT} "
-        f"--master {SPARK_MASTER} "
-        f"--deploy-mode client "
-        f"{SPARK_BASE_CONF} "
-        f"{SPARK_RESOURCES} "
         f"--driver-memory 8g "
-        f"/opt/spark-jobs/06_tensorflow_text_baselines.py"
+        f"--conf spark.driver.maxResultSize=2g "
+        f"/opt/spark-jobs/05b_distilbart_zeroshot.py"
     ),
     dag=dag,
 )
 
 
-t1_ingesta >> t2_etl >> t3_word2vec_mlp >> t4_use_mllib_mlp >> t5_roberta_zeroshot >> t6_tensorflow
+t1_ingesta >> t2_etl >> t3_word2vec_mlp >> t4_use_mllib_mlp >> t5_distilbart_zeroshot

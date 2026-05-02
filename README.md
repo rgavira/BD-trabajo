@@ -165,7 +165,7 @@ Por que es importante:
 
 ### Nivel 2b - Barrera del deep learning y separacion entrenamiento-inferencia
 
-Archivo activo: [05b_roberta_zeroshot.py](spark-jobs/05b_roberta_zeroshot.py)
+Archivo activo: [05b_distilbart_zeroshot.py](spark-jobs/05b_distilbart_zeroshot.py)
 
 Archivo historico: [05_spark_nlp_classifierdl.py](spark-jobs/05_spark_nlp_classifierdl.py)
 
@@ -326,13 +326,12 @@ Secuencia actual:
 2. `spark_etl`
 3. `spark_word2vec_mlp`
 4. `spark_use_mllib_mlp`
-5. `spark_roberta_zeroshot`
-6. `spark_tensorflow_baselines`
+5. `spark_distilbart_zeroshot`
 
 Lectura recomendada para la memoria:
 
 - el corazon practico del proyecto esta en los niveles `1`, `2a` y `2b`
-- la tarea de TensorFlow marca la frontera del enfoque, no el cierre fuerte del trabajo
+- el DAG activo se cierra en `DistilBART`, y `TensorFlow + Horovod` quedan como frontera teorica
 
 ---
 
@@ -347,8 +346,7 @@ BD-trabajo/
 |   |-- 03_word2vec_mlp.py
 |   |-- 04_spark_nlp_use_mllib_mlp.py
 |   |-- 05_spark_nlp_classifierdl.py
-|   |-- 05b_roberta_zeroshot.py
-|   |-- 06_tensorflow_text_baselines.py
+|   |-- 05b_distilbart_zeroshot.py
 |   `-- 99_comparative_study_unused.py
 |-- notebooks/
 |-- data/

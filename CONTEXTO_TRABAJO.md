@@ -192,7 +192,7 @@ Lectura correcta:
 
 ### Nivel 2b - La barrera del deep learning en CPU y el giro hacia inferencia
 
-Archivo activo: [05b_roberta_zeroshot.py](spark-jobs/05b_roberta_zeroshot.py)
+Archivo activo: [05b_distilbart_zeroshot.py](spark-jobs/05b_distilbart_zeroshot.py)
 
 Archivo historico: [05_spark_nlp_classifierdl.py](spark-jobs/05_spark_nlp_classifierdl.py)
 
@@ -333,8 +333,6 @@ Esta en reconocer que:
 
 ## TensorFlow como frontera cercana
 
-Archivo principal: [06_tensorflow_text_baselines.py](spark-jobs/06_tensorflow_text_baselines.py)
-
 Este nivel existe como frontera tecnica, no como centro del cierre practico.
 
 Que representa:
@@ -393,14 +391,13 @@ El DAG actual encadena:
 2. `spark_etl`
 3. `spark_word2vec_mlp`
 4. `spark_use_mllib_mlp`
-5. `spark_roberta_zeroshot`
-6. `spark_tensorflow_baselines`
+5. `spark_distilbart_zeroshot`
 
 Pero la lectura recomendada para el cierre del trabajo es:
 
 - el bloque principal termina en `03` y `04`
 - `05b` funciona como evidencia del desacoplamiento entrenamiento-inferencia
-- `06` y `Horovod` quedan como frontera y trabajo futuro
+- `TensorFlow + Horovod` quedan como frontera y trabajo futuro, fuera del codigo activo
 
 ---
 
@@ -411,9 +408,8 @@ Pero la lectura recomendada para el cierre del trabajo es:
 | 0 | `02_etl.py` | Spark distribuido | base comun reproducible |
 | 1 | `03_word2vec_mlp.py` | distribuido real | baseline central del proyecto |
 | 2a | `04_spark_nlp_use_mllib_mlp.py` | distribuido real | mejora semantica manteniendo ML distribuido |
-| 2b | `05b_roberta_zeroshot.py` | inferencia distribuida | muestra el desacoplamiento entrenamiento-inferencia |
-| 3 | `06_tensorflow_text_baselines.py` | driver local | frontera del enfoque en este entorno |
-| 4 teorico | Horovod | distribuido real con GPU | extension natural en infraestructura real |
+| 2b | `05b_distilbart_zeroshot.py` | inferencia zero-shot | muestra el desacoplamiento entrenamiento-inferencia |
+| 3 teorico | Horovod | distribuido real con GPU | extension natural en infraestructura real |
 
 ---
 
