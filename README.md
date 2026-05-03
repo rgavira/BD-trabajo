@@ -31,10 +31,11 @@ El trabajo se cierra con una idea fuerte:
 Por eso el arco narrativo queda asi:
 
 1. `Spark MLlib` como baseline distribuida central.
-2. `Spark NLP + embeddings` como mejora semantica manteniendo entrenamiento distribuido.
-3. barrera practica al intentar entrenar deep learning en un cluster CPU puro.
-4. separacion de `entrenamiento` e `inferencia` como salida arquitectonica razonable.
-5. `TensorFlow + Horovod` como frontera teorica para un entorno real con GPU.
+2. `Spark NLP + embeddings clasicos (USE)` como mejora semantica manteniendo entrenamiento distribuido.
+3. `Spark NLP + embeddings transformer (SmallBERT)` como salto a representacion contextual, todavia distribuido.
+4. barrera practica al intentar entrenar deep learning en un cluster CPU puro.
+5. separacion de `entrenamiento` e `inferencia` como salida arquitectonica razonable.
+6. `TensorFlow + Horovod` como frontera teorica para un entorno real con GPU.
 
 ---
 
@@ -59,6 +60,10 @@ Word2Vec + MLP
     v
 Task 4 - Spark NLP embeddings + MLlib MLP
 USE + MLP MLlib
+    |
+    v
+Task 4b - Spark NLP transformer embeddings + MLlib MLP (experimental)
+SmallBERT L4_512 + pooling + MLP MLlib
     |
     v
 Task 5 - Spark NLP zero-shot
@@ -192,12 +197,49 @@ Lectura de estos resultados:
 
 ---
 
+### Nivel 2b - SmallBERT + MLlib MLP (embeddings transformer ligeros)
+
+Archivo principal: [04b_spark_nlp_minilm_mllib_mlp.py](spark-jobs/04b_spark_nlp_minilm_mllib_mlp.py)
+
+Experimento exploratorio fuera del DAG principal. Motivacion: comprobar si embeddings contextuales a nivel token (transformer real) mejoran a USE manteniendo el mismo esquema distribuido.
+
+Pipeline:
+
+```text
+text -> DocumentAssembler -> Tokenizer -> BertEmbeddings(small_bert_L4_512)
+     -> SentenceEmbeddings(AVERAGE) -> Parquet intermedio -> MLP MLlib
+```
+
+Diferencia clave respecto al nivel 2a:
+
+- `USE` genera un embedding de frase directamente (encoder de frase)
+- `SmallBERT` genera embeddings contextuales por token (transformer BERT), y luego se promedia con `SentenceEmbeddings(AVERAGE)` para obtener un vector por cancion
+- ambos producen vectores de 512 dimensiones, lo que mantiene la comparabilidad directa
+- el clasificador MLlib y el esquema de dos sesiones con Parquet intermedio es identico al nivel 2a
+
+Por que SmallBERT y no BERT grande:
+
+- `small_bert_L4_512` tiene solo 4 capas transformer y 512 dimensiones ocultas
+- es viable en CPU dentro de este entorno
+- permite comprobar si la contextualidad de BERT aporta algo sobre USE sin explotar el coste computacional
+
+Lectura correcta:
+
+- sigue siendo entrenamiento distribuido real (MLlib)
+- el salto es en la representacion: de embeddings de frase (USE) a embeddings token-level contextuales (BERT)
+- es la primera vez en el proyecto que usamos un transformer puro para generar los embeddings
+
+Resultados: pendientes (en ejecucion).
+
+---
+
 ## Comparativa principal
 
 | Nivel | Modelo | F1 weighted | F1 macro | F1 explicit | Accuracy | AUC ROC | Tiempo total |
 |---|---|---:|---:|---:|---:|---:|---:|
 | 1 | `Word2Vec + MLP (MLlib)` | 0.8491 | 0.8100 | 0.7215 | 0.8513 | 0.8947 | 439.1 s |
 | 2a | `USE + MLP (MLlib)` | 0.8544 | 0.8168 | 0.7317 | 0.8564 | 0.8954 | 2065.8 s |
+| 2b | `SmallBERT L4_512 + MLP (MLlib)` | — | — | — | — | — | pendiente |
 
 Que nos dice esta comparativa:
 
@@ -208,7 +250,7 @@ Que nos dice esta comparativa:
 
 ---
 
-### Nivel 2b - Barrera del deep learning y separacion entrenamiento-inferencia
+### Nivel 2c - Barrera del deep learning y separacion entrenamiento-inferencia
 
 Archivo activo: [05b_distilbart_zeroshot.py](spark-jobs/05b_distilbart_zeroshot.py)
 
@@ -390,6 +432,7 @@ BD-trabajo/
 |   |-- 02_etl.py
 |   |-- 03_word2vec_mlp.py
 |   |-- 04_spark_nlp_use_mllib_mlp.py
+|   |-- 04b_spark_nlp_minilm_mllib_mlp.py
 |   |-- 05_spark_nlp_classifierdl.py
 |   |-- 05b_distilbart_zeroshot.py
 |   `-- 99_comparative_study_unused.py

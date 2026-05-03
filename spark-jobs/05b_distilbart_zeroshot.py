@@ -46,7 +46,7 @@ from sparknlp.annotator import Tokenizer, BartForZeroShotClassification
 
 CANDIDATE_LABELS = ["explicit", "clean"]
 EXPLICIT_LABEL = "explicit"
-TEST_LIMIT_ROWS = 100
+TEST_LIMIT_ROWS = 1000
 TEST_SAMPLE_FRACTION = None
 INFER_BATCHES = 1
 HDFS_TMP_PRED = "hdfs://namenode:9000/tmp/distilbart_zeroshot_predictions/"
@@ -195,7 +195,10 @@ def main():
         .limit(1)
     )
 
-    log_info("Modo test", "limitado a 100 canciones" if TEST_LIMIT_ROWS is not None else "muestra estratificada")
+    log_info(
+        "Modo test",
+        f"limitado a {TEST_LIMIT_ROWS} canciones" if TEST_LIMIT_ROWS is not None else "muestra estratificada",
+    )
     log_info("Target test rows", TEST_LIMIT_ROWS if TEST_LIMIT_ROWS is not None else "dataset completo")
     log_info("Fraccion test", "-" if test_fraction is None else f"{test_fraction:.4f}")
     log_info("Particiones test", 4)
@@ -286,7 +289,7 @@ def main():
             "trained_on_data": False,
             "distributed": True,
             "collect_on_driver": False,
-            "test_mode": "limited_test_100" if TEST_LIMIT_ROWS is not None else "sampled_test",
+            "test_mode": f"limited_test_{TEST_LIMIT_ROWS}" if TEST_LIMIT_ROWS is not None else "sampled_test",
             "test_rows_target": TEST_LIMIT_ROWS if TEST_LIMIT_ROWS is not None else None,
             "test_fraction": None if test_fraction is None else round(test_fraction, 4),
             "infer_batches": batches,

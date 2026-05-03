@@ -165,7 +165,7 @@ Spark NLP entra en el proyecto por una razon concreta:
 
 No porque garantice por si mismo entrenamiento deep learning distribuido real.
 
-Hay dos subniveles relevantes.
+Hay tres subniveles relevantes.
 
 ---
 
@@ -217,7 +217,43 @@ Lectura comparativa:
 
 ---
 
-### Nivel 2b - La barrera del deep learning en CPU y el giro hacia inferencia
+### Nivel 2b - SmallBERT + MLlib MLP (embeddings transformer ligeros)
+
+Archivo principal: [04b_spark_nlp_minilm_mllib_mlp.py](spark-jobs/04b_spark_nlp_minilm_mllib_mlp.py)
+
+Experimento exploratorio ejecutado fuera del DAG principal. La pregunta que responde es: dado que USE mejora a Word2Vec de forma moderada, que pasa si usamos embeddings contextuales a nivel token (un transformer real) manteniendo el mismo esquema distribuido.
+
+Pipeline:
+
+```text
+text -> DocumentAssembler -> Tokenizer -> BertEmbeddings(small_bert_L4_512)
+     -> SentenceEmbeddings(AVERAGE) -> Parquet intermedio -> MLP MLlib
+```
+
+Diferencia conceptual respecto al nivel 2a:
+
+- `USE` genera un embedding de frase directamente: una sola representacion por oracion desde el principio
+- `SmallBERT L4_512` genera embeddings contextuales por token: cada palabra tiene una representacion que depende del contexto que la rodea
+- `SentenceEmbeddings(AVERAGE)` hace la media de los embeddings de todos los tokens para obtener un unico vector de 512d por cancion
+- el resultado es comparable con USE en dimension (512d) pero distinto en naturaleza: los vectores son la media de representaciones contextuales, no una representacion de frase directa
+
+Por que `small_bert_L4_512`:
+
+- solo 4 capas transformer y 512 dimensiones ocultas
+- viable en CPU sin que el tiempo de embeddings sea prohibitivo
+- nativo en el hub de Spark NLP, compatible con el esquema de dos sesiones + Parquet intermedio
+
+Lectura correcta:
+
+- el entrenamiento del clasificador sigue siendo distribuido real en MLlib
+- el salto esta en la representacion: de encoder de frase (USE) a encoder de tokens contextual (BERT)
+- es la primera vez en el proyecto que los embeddings vienen de un transformer puro
+
+Resultados: pendientes.
+
+---
+
+### Nivel 2c - La barrera del deep learning en CPU y el giro hacia inferencia
 
 Archivo activo: [05b_distilbart_zeroshot.py](spark-jobs/05b_distilbart_zeroshot.py)
 
@@ -422,7 +458,7 @@ El DAG actual encadena:
 
 Pero la lectura recomendada para el cierre del trabajo es:
 
-- el bloque principal termina en `03` y `04`
+- el bloque principal termina en `03`, `04` y `04b`
 - `05b` funciona como evidencia del desacoplamiento entrenamiento-inferencia
 - `TensorFlow + Horovod` quedan como frontera y trabajo futuro, fuera del codigo activo
 
@@ -434,8 +470,9 @@ Pero la lectura recomendada para el cierre del trabajo es:
 |---|---|---|---|
 | 0 | `02_etl.py` | Spark distribuido | base comun reproducible |
 | 1 | `03_word2vec_mlp.py` | distribuido real | baseline central del proyecto |
-| 2a | `04_spark_nlp_use_mllib_mlp.py` | distribuido real | mejora semantica manteniendo ML distribuido |
-| 2b | `05b_distilbart_zeroshot.py` | inferencia zero-shot | muestra el desacoplamiento entrenamiento-inferencia |
+| 2a | `04_spark_nlp_use_mllib_mlp.py` | distribuido real | mejora semantica con embeddings de frase preentrenados |
+| 2b | `04b_spark_nlp_minilm_mllib_mlp.py` | distribuido real (experimental) | salto a embeddings transformer contextuales, todavia MLlib |
+| 2c | `05b_roberta_zeroshot.py` | inferencia zero-shot en workers | muestra el desacoplamiento entrenamiento-inferencia |
 | 3 teorico | Horovod | distribuido real con GPU | extension natural en infraestructura real |
 
 ---
